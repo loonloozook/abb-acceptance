@@ -1,0 +1,2042 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#1a1a2e">
+<title>ABB Приёмка — Сканер поставки</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/svg+xml" href="icon.svg">
+<link rel="apple-touch-icon" href="icon-192.png">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js"></script>
+<script src="https://fastly.jsdelivr.net/npm/barcode-detector@3/dist/es/polyfill.min.js" type="module"></script>
+<style>
+:root {
+  --bg: #1a1a2e;
+  --surface: #16213e;
+  --surface2: #0f3460;
+  --accent: #e94560;
+  --green: #00c853;
+  --green-d: #1b5e20;
+  --red: #ff1744;
+  --orange: #ff8f00;
+  --blue: #2962ff;
+  --yellow: #ffd600;
+  --text: #eee;
+  --text2: #aaa;
+  --text3: #888;
+  --radius: 12px;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  background: var(--bg); color: var(--text);
+  min-height: 100vh; min-height: 100dvh;
+  overflow-x: hidden; -webkit-tap-highlight-color: transparent;
+}
+.app { max-width: 600px; margin: 0 auto; padding: 12px; padding-bottom: 100px; }
+.header { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; margin-bottom: 8px; gap: 8px; }
+.header h1 { font-size: 18px; font-weight: 700; min-width: 0; flex: 1; }
+.header-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.icon-btn {
+  width: 40px; height: 40px; border-radius: 50%; border: none;
+  background: var(--surface); color: var(--text); font-size: 18px;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.icon-btn:active { background: var(--surface2); }
+
+.upload-area {
+  border: 2px dashed var(--surface2); border-radius: var(--radius);
+  padding: 36px 20px; text-align: center; cursor: pointer;
+  transition: border-color 0.3s, background 0.3s; margin-bottom: 12px;
+}
+.upload-area:active, .upload-area.dragover { border-color: var(--accent); background: rgba(233,69,96,0.1); }
+.upload-icon { font-size: 44px; margin-bottom: 12px; }
+.upload-text { color: var(--text2); font-size: 14px; line-height: 1.5; }
+.upload-text strong { color: var(--text); }
+input[type="file"] { display: none; }
+
+.hint {
+  background: var(--surface); border-radius: var(--radius); padding: 14px;
+  color: var(--text2); font-size: 13px; line-height: 1.55;
+}
+.hint strong { color: var(--text); }
+.hint em { color: var(--text); font-style: normal; background: var(--surface2); padding: 1px 6px; border-radius: 4px; }
+
+/* Сводка по поставке */
+.delivery-info {
+  background: var(--surface); border-radius: var(--radius);
+  padding: 12px; margin-bottom: 10px;
+}
+.di-name { font-weight: 600; font-size: 14px; margin-bottom: 2px; word-break: break-word; }
+.di-meta { font-size: 11px; color: var(--text2); }
+.di-stats { display: flex; gap: 6px; margin-top: 10px; }
+.di-chip {
+  flex: 1; background: var(--surface2); border-radius: 8px;
+  padding: 8px 4px; text-align: center; min-width: 0;
+  cursor: pointer; border: 1px solid transparent;
+  transition: border-color .15s, background .15s, transform .15s;
+}
+.di-chip:active { transform: scale(0.97); }
+.di-chip.active { border-color: var(--accent); background: rgba(233,69,96,0.18); }
+.di-chip .di-num { font-size: 18px; font-weight: 800; color: var(--accent); line-height: 1.1; }
+.di-chip.green .di-num { color: var(--green); }
+.di-chip.orange .di-num { color: var(--orange); }
+.di-chip.red .di-num { color: var(--red); }
+.di-chip.blue .di-num { color: var(--blue); }
+.di-chip .di-lbl { font-size: 10px; color: var(--text2); margin-top: 2px; line-height: 1.1; }
+
+.tab-bar { display: flex; gap: 4px; margin-bottom: 10px; background: var(--surface); border-radius: var(--radius); padding: 4px; }
+.tab-btn { flex: 1; padding: 8px; border: none; border-radius: 8px; background: transparent; color: var(--text2); font-size: 13px; font-weight: 600; cursor: pointer; }
+.tab-btn.active { background: var(--accent); color: white; }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+.section-title {
+  font-size: 11px; color: var(--text2); text-transform: uppercase; letter-spacing: .8px;
+  margin: 12px 6px 6px;
+}
+.section-title.first { margin-top: 4px; }
+.section-title strong { color: var(--text); }
+
+.search-bar {
+  width: 100%; padding: 10px 14px; border-radius: var(--radius);
+  border: 1px solid var(--surface2); background: var(--surface);
+  color: var(--text); font-size: 14px; margin-bottom: 8px; outline: none;
+}
+.search-bar:focus { border-color: var(--accent); }
+
+/* Карточка строки в списке */
+.li-row {
+  background: var(--surface); border-radius: 10px;
+  padding: 10px 12px; margin-bottom: 6px;
+  border-left: 3px solid var(--surface2);
+  cursor: pointer;
+}
+.li-row:active { background: var(--surface2); }
+.li-row.partial { border-left-color: var(--blue); }
+.li-row.done { border-left-color: var(--green); background: rgba(0,200,83,0.08); }
+.li-row.over { border-left-color: var(--orange); background: rgba(255,143,0,0.10); }
+.li-row.extra { border-left-color: var(--red); background: rgba(255,23,68,0.10); }
+
+.li-head {
+  display: flex; align-items: center; gap: 6px; margin-bottom: 2px;
+  font-size: 12px;
+}
+.li-num {
+  background: var(--surface2); color: var(--text);
+  padding: 1px 7px; border-radius: 999px; font-weight: 700; font-size: 11px;
+  flex-shrink: 0;
+}
+.li-row.done .li-num { background: var(--green); color: #0a1f0a; }
+.li-row.over .li-num { background: var(--orange); color: #1a1100; }
+.li-row.extra .li-num { background: var(--red); color: white; }
+.li-art {
+  font-family: 'SF Mono','Menlo',monospace; font-size: 11.5px; color: var(--text2);
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.li-badges { display: flex; gap: 4px; flex-shrink: 0; }
+.li-badge {
+  font-size: 10px; padding: 1px 6px; border-radius: 4px;
+  background: var(--surface2); color: var(--text2); font-weight: 700; line-height: 1.4;
+}
+.li-badge.mark { background: var(--orange); color: #1a1100; }
+.li-badge.agg { background: var(--blue); color: white; }
+.li-badge.over { background: var(--orange); color: #1a1100; }
+
+.li-name {
+  font-size: 14px; font-weight: 600; line-height: 1.25;
+  margin-bottom: 4px; word-break: break-word;
+}
+.li-display-name {
+  font-size: 12px; color: var(--text2); line-height: 1.25;
+  margin: -1px 0 4px; word-break: break-word;
+}
+.li-display-name b { color: var(--text); font-weight: 700; }
+.li-foot {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  font-size: 11.5px; color: var(--text2);
+}
+.li-foot .li-place { color: var(--text); }
+.li-foot .li-place::before { content: "📦 "; }
+.li-foot .li-prog {
+  font-weight: 700; color: var(--text);
+}
+.li-foot .li-prog .li-prog-acc { color: var(--green); }
+.li-row.over .li-foot .li-prog .li-prog-acc { color: var(--orange); }
+.li-foot .li-rem { color: var(--text2); }
+.li-foot .li-rem.over { color: var(--orange); font-weight: 700; }
+
+.empty-state { text-align: center; padding: 28px 16px; color: var(--text2); }
+.empty-state .empty-icon { font-size: 36px; margin-bottom: 8px; }
+
+.btn { padding: 10px 16px; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; }
+.btn-primary { background: var(--accent); color: white; }
+.btn-secondary { background: var(--surface2); color: var(--text); }
+.btn-danger { background: var(--red); color: white; }
+.btn-success { background: var(--green); color: #0a1f0a; }
+.row-btns { display: flex; gap: 8px; margin-top: 10px; }
+.row-btns .btn { flex: 1; }
+
+.scan-btn {
+  position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+  width: calc(100% - 24px); max-width: 576px; padding: 16px; border: none;
+  border-radius: var(--radius); background: var(--accent); color: white;
+  font-size: 18px; font-weight: 700; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  z-index: 100; box-shadow: 0 4px 20px rgba(233,69,96,0.4);
+}
+.scan-btn:active { transform: translateX(-50%) scale(0.97); }
+.scan-btn:disabled { opacity: 0.5; }
+.scan-btn svg { width: 24px; height: 24px; }
+
+/* Scanner */
+.scanner-overlay { position: fixed; inset: 0; background: #000; z-index: 1000; display: none; flex-direction: column; }
+.scanner-overlay.active { display: flex; }
+.scanner-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px; background: rgba(0,0,0,0.8); z-index: 10;
+}
+.scanner-header h2 { font-size: 16px; color: white; }
+.scanner-header-btns { display: flex; gap: 8px; }
+.scanner-close {
+  width: 36px; height: 36px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.3);
+  background: transparent; color: white; font-size: 18px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.scanner-body { flex: 1; position: relative; overflow: hidden; background: #000; }
+#videoContainer { width: 100%; height: 100%; }
+#videoContainer video { width: 100% !important; height: 100% !important; object-fit: cover !important; position: absolute; top: 0; left: 0; }
+#videoContainer canvas { display: none !important; }
+.scan-frame {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+  width: 85%; height: 100px; border: 2px solid var(--accent); border-radius: 8px;
+  pointer-events: none; box-shadow: 0 0 0 9999px rgba(0,0,0,0.45);
+}
+.scan-frame::after {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: var(--accent); animation: scanLine 2s ease-in-out infinite;
+  box-shadow: 0 0 8px var(--accent);
+}
+@keyframes scanLine { 0%,100%{top:0} 50%{top:calc(100% - 2px)} }
+.scanner-bottom {
+  padding: 12px 16px; background: rgba(0,0,0,0.8); z-index: 10;
+  display: flex; gap: 8px; align-items: center;
+}
+.scanner-bottom input {
+  flex: 1; padding: 10px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2);
+  background: rgba(255,255,255,0.1); color: white; font-size: 16px;
+}
+.scanner-bottom input::placeholder { color: rgba(255,255,255,0.4); }
+.scanner-bottom button {
+  padding: 10px 16px; border-radius: 8px; border: none;
+  background: var(--accent); color: white; font-weight: 700; font-size: 14px; cursor: pointer;
+  white-space: nowrap;
+}
+#photoInput { display: none; }
+.debug-info {
+  position: absolute; bottom: 80px; left: 12px; right: 12px;
+  color: rgba(255,255,255,0.6); font-size: 11px; text-align: center;
+  pointer-events: none; z-index: 5;
+}
+
+/* ----- Карточка результата (полноэкранная) ----- */
+.result-card {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.94);
+  z-index: 1100; display: none; flex-direction: column;
+  padding-top: max(0px, env(safe-area-inset-top));
+  padding-bottom: 0;
+}
+.result-card.active { display: flex; }
+.rc-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 14px;
+  background: rgba(0,0,0,0.6);
+  flex-shrink: 0;
+  gap: 8px;
+}
+.rc-header .rc-code {
+  font-size: 12px; color: var(--text2); font-family: 'SF Mono','Menlo',monospace;
+  word-break: break-all; flex: 1; min-width: 0;
+}
+.rc-scroll {
+  flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  padding: 0 14px 14px;
+}
+.rc-block {
+  background: var(--surface); border-radius: var(--radius);
+  padding: 12px 14px; margin-bottom: 8px;
+}
+.rc-block .rc-lbl { font-size: 11px; color: var(--text2); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 4px; }
+.rc-block .rc-val { font-size: 16px; font-weight: 700; word-break: break-word; line-height: 1.3; }
+.rc-block .rc-val.mono { font-family: 'SF Mono','Menlo',monospace; font-size: 14px; font-weight: 600; }
+
+.rc-block.success-banner {
+  background: linear-gradient(135deg, #1b5e20, #2e7d32); color: white;
+  text-align: center; padding: 16px; font-size: 17px; font-weight: 700;
+}
+
+.rc-marking {
+  padding: 14px; border-radius: var(--radius); text-align: center;
+  font-size: 18px; font-weight: 800; letter-spacing: .3px;
+  margin-bottom: 8px;
+}
+.rc-marking.yes { background: linear-gradient(135deg, #ff6b00, #ff3d00); color: white; box-shadow: 0 4px 16px rgba(255,61,0,0.4); }
+.rc-marking.no  { background: linear-gradient(135deg, #1b5e20, #2e7d32); color: white; }
+.rc-marking.warn { background: linear-gradient(135deg, var(--red), #b71c1c); color: white; }
+
+.rc-progress {
+  display: flex; gap: 6px; margin-top: 6px;
+}
+.rc-progress .rcp-chip {
+  flex: 1; background: var(--surface2); border-radius: 6px;
+  padding: 6px 4px; text-align: center;
+}
+.rc-progress .rcp-num { font-size: 18px; font-weight: 800; color: var(--text); }
+.rc-progress .rcp-num.acc { color: var(--green); }
+.rc-progress .rcp-num.rem { color: var(--accent); }
+.rc-progress .rcp-num.over { color: var(--orange); }
+.rc-progress .rcp-lbl { font-size: 10px; color: var(--text2); margin-top: 2px; }
+
+/* Sticky bottom action panel внутри result-card */
+.rc-actions {
+  flex-shrink: 0;
+  background: rgba(10,15,35,0.96);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  border-top: 1px solid var(--surface2);
+  padding: 10px 14px;
+  padding-bottom: max(10px, env(safe-area-inset-bottom));
+  display: flex; flex-direction: column; gap: 8px;
+}
+
+.rc-qty-input-wrap {
+  display: flex; align-items: stretch; gap: 6px;
+}
+.rc-qty-input-wrap label {
+  font-size: 11px; color: var(--text2); text-transform: uppercase; letter-spacing: .5px;
+  align-self: center; flex-shrink: 0;
+}
+.rc-qty-input {
+  flex: 1; padding: 12px 14px; border-radius: 8px;
+  border: 2px solid var(--surface2); background: var(--surface);
+  color: var(--text); font-size: 18px; font-weight: 700; outline: none;
+  font-family: inherit;
+  -moz-appearance: textfield;
+}
+.rc-qty-input::-webkit-outer-spin-button,
+.rc-qty-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.rc-qty-input:focus { border-color: var(--accent); }
+.rc-qty-input::placeholder { color: var(--text3); font-weight: 500; }
+.rc-qty-step {
+  width: 44px; padding: 0; border: none; border-radius: 8px;
+  background: var(--surface2); color: var(--text);
+  font-size: 22px; font-weight: 700; cursor: pointer;
+}
+.rc-qty-step:active { background: var(--accent); }
+
+.rc-accept-btn {
+  width: 100%; padding: 14px; border: none; border-radius: 10px;
+  background: var(--green); color: #0a1f0a;
+  font-size: 17px; font-weight: 800; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+.rc-accept-btn:active { transform: scale(0.98); }
+.rc-accept-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.rc-accept-btn.confirm { background: var(--accent); color: white; }
+
+.rc-next-btn {
+  width: 100%; padding: 14px; border: none; border-radius: 10px;
+  background: var(--accent); color: white;
+  font-size: 16px; font-weight: 700; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+.rc-next-btn:active { transform: scale(0.98); }
+
+.rc-back-btn {
+  width: 100%; padding: 12px; border: none; border-radius: 10px;
+  background: var(--surface2); color: var(--text);
+  font-size: 14px; font-weight: 700; cursor: pointer;
+}
+
+/* Off-supply (товара нет в поставке) — формы */
+.off-form-block {
+  background: var(--surface); border-radius: var(--radius);
+  padding: 12px 14px; margin-bottom: 8px;
+}
+.off-form-row { margin-bottom: 8px; }
+.off-form-row:last-child { margin-bottom: 0; }
+.off-form-row label {
+  display: block; font-size: 11px; color: var(--text2);
+  text-transform: uppercase; letter-spacing: .5px; margin-bottom: 4px;
+}
+.off-form-row input, .off-form-row textarea {
+  width: 100%; padding: 10px 12px; border-radius: 8px;
+  border: 1px solid var(--surface2); background: var(--bg);
+  color: var(--text); font-size: 15px; outline: none;
+  font-family: inherit;
+}
+.off-form-row input:focus, .off-form-row textarea:focus { border-color: var(--accent); }
+.off-form-row .off-required { color: var(--accent); margin-left: 3px; }
+
+.field-error {
+  border-color: var(--red) !important;
+}
+.error-msg {
+  color: var(--red); font-size: 12px; margin-top: 4px; min-height: 16px;
+}
+
+/* Picker (несколько совпадений по EAN) */
+.picker-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.92);
+  z-index: 1200; display: none; flex-direction: column;
+  padding: 16px; padding-top: max(16px, env(safe-area-inset-top));
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
+}
+.picker-overlay.active { display: flex; }
+.picker-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; gap: 10px; }
+.picker-header .picker-title { font-size: 16px; font-weight: 700; }
+.picker-header .picker-sub { font-size: 12px; color: var(--text2); margin-top: 4px; }
+.picker-list { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.picker-item {
+  background: var(--surface); border-radius: var(--radius); padding: 12px 14px;
+  margin-bottom: 8px; cursor: pointer; border: 1px solid transparent;
+}
+.picker-item:active { border-color: var(--accent); background: var(--surface2); }
+.picker-item .pi-num {
+  display: inline-block; background: var(--surface2);
+  padding: 1px 7px; border-radius: 999px; font-weight: 700; font-size: 11px; margin-right: 6px;
+}
+.picker-item .pi-article { font-family: 'SF Mono','Menlo',monospace; font-size: 13px; color: var(--text2); margin-bottom: 4px; }
+.picker-item .pi-name { font-size: 15px; font-weight: 700; word-break: break-word; }
+.picker-item .pi-meta { font-size: 12px; color: var(--text2); margin-top: 4px; }
+
+/* Подсказка над качество принятого внутри карточки */
+.qty-hint {
+  font-size: 11px; color: var(--text2); padding: 0 4px; text-align: right;
+  min-height: 14px;
+}
+.qty-hint b { color: var(--text); font-weight: 700; }
+
+.toast {
+  position: fixed; left: 50%; bottom: 100px;
+  transform: translateX(-50%) translateY(20px);
+  padding: 12px 18px; border-radius: 10px;
+  background: var(--surface); color: var(--text);
+  font-weight: 600; font-size: 14px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+  opacity: 0; pointer-events: none;
+  transition: opacity .2s, transform .2s;
+  z-index: 2000; max-width: calc(100% - 32px);
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.toast.success { background: var(--green); color: #0a1f0a; }
+.toast.error { background: var(--red); color: white; }
+.toast.warn { background: var(--orange); color: #1a1100; }
+
+/* Доп. информация в карточке (свернутый блок) */
+details.rc-details {
+  background: var(--surface); border-radius: var(--radius);
+  padding: 10px 14px; margin-bottom: 8px;
+}
+details.rc-details summary {
+  cursor: pointer; font-size: 13px; color: var(--text2);
+  list-style: none; user-select: none;
+}
+details.rc-details summary::-webkit-details-marker { display: none; }
+details.rc-details summary::after { content: " ▼"; font-size: 10px; }
+details.rc-details[open] summary::after { content: " ▲"; }
+details.rc-details .rc-details-body { margin-top: 8px; }
+details.rc-details .rc-details-body div { font-size: 12.5px; padding: 4px 0; border-bottom: 1px dashed var(--surface2); }
+details.rc-details .rc-details-body div:last-child { border-bottom: none; }
+details.rc-details .rc-details-body b { color: var(--text); }
+
+</style>
+</head>
+<body>
+
+<div class="app" id="app">
+  <div class="header">
+    <h1>📦 ABB Приёмка</h1>
+    <div class="header-actions">
+      <button class="icon-btn" onclick="exportAcceptance()" title="Экспорт результатов" id="exportBtn" style="display:none;">📤</button>
+      <button class="icon-btn" onclick="showHelp()" title="Помощь">❓</button>
+    </div>
+  </div>
+
+  <!-- Загрузка файла поставки -->
+  <div id="uploadSection">
+    <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
+      <div class="upload-icon">📋</div>
+      <div class="upload-text">
+        <strong>Загрузите файл поставки</strong><br>
+        Excel-файл с колонками: <em>№, article, Товар, display_name, Кол-во, Ед., Паллета №, МАРКИРОВКА, Агрегация, Комментарий</em>, а также <em>ean</em> и <em>package_level_*_ean</em>.<br>
+        После загрузки прогресс приёмки сохраняется на устройстве.
+      </div>
+    </div>
+    <input type="file" id="fileInput" accept=".xlsx,.xls">
+    <div class="hint">
+      <strong>Как это работает:</strong><br>
+      1. Загрузите xlsx-файл по конкретной поставке.<br>
+      2. На главном экране появится список товаров с прогрессом приёмки. Маркируемые товары — вверху.<br>
+      3. Нажмите <strong>«Сканировать»</strong> или тапните по позиции в списке — откроется карточка товара.<br>
+      4. Введите количество принятого и нажмите <strong>«Принять товар»</strong>. Если принято больше заявленного — это будет помечено.<br>
+      5. Если отсканирован товар, которого нет в поставке — откроется отдельная карточка с возможностью ручного приёма (EAN, артикул, название, место, количество).<br>
+      6. Кнопкой <strong>«📤 Экспорт»</strong> можно выгрузить файл с приёмкой и остатками для сравнения с общей таблицей.
+    </div>
+  </div>
+
+  <!-- Главный экран после загрузки поставки -->
+  <div id="mainSection" style="display:none;">
+    <div class="delivery-info">
+      <div class="di-name" id="deliveryName"></div>
+      <div class="di-meta" id="deliveryMeta"></div>
+      <div class="di-stats">
+        <div class="di-chip active" id="filterAllChip" onclick="setListFilter('all')" title="Показать все позиции"><div class="di-num" id="statTotal">0</div><div class="di-lbl">позиций</div></div>
+        <div class="di-chip green" id="filterDoneChip" onclick="setListFilter('done')" title="Показать принятые позиции"><div class="di-num" id="statDone">0</div><div class="di-lbl">принято</div></div>
+        <div class="di-chip blue" id="filterPartialChip" onclick="setListFilter('partial')" title="Показать частично принятые позиции"><div class="di-num" id="statPartial">0</div><div class="di-lbl">частично</div></div>
+        <div class="di-chip orange" id="filterOverChip" onclick="setListFilter('over')" title="Показать позиции с превышением"><div class="di-num" id="statOver">0</div><div class="di-lbl">с превыш.</div></div>
+        <div class="di-chip red" id="filterExtraChip" onclick="setListFilter('extra')" title="Показать позиции вне поставки"><div class="di-num" id="statExtra">0</div><div class="di-lbl">вне пост.</div></div>
+      </div>
+    </div>
+
+    <div class="tab-bar">
+      <button class="tab-btn active" data-tab="list" onclick="switchTab('list')">Список</button>
+      <button class="tab-btn" data-tab="actions" onclick="switchTab('actions')">Действия</button>
+    </div>
+
+    <div class="tab-content active" id="tab-list">
+      <input type="text" class="search-bar" id="searchBar" placeholder="🔍 Поиск по артикулу, названию, EAN, месту…">
+      <div id="listContainer"></div>
+    </div>
+
+    <div class="tab-content" id="tab-actions">
+      <div class="hint">
+        <strong>Управление поставкой</strong><br>
+        Загрузите другой файл поставки — текущий прогресс приёмки будет очищен.<br>
+        Сбросьте прогресс — все «принято» / «вне поставки» обнулятся, файл останется.
+      </div>
+      <div class="row-btns">
+        <button class="btn btn-primary" onclick="exportAcceptance()">📤 Экспорт результатов</button>
+      </div>
+      <div class="row-btns">
+        <button class="btn btn-secondary" onclick="loadNewDelivery()">📋 Загрузить другой файл поставки</button>
+      </div>
+      <div class="row-btns">
+        <button class="btn btn-danger" onclick="resetProgress()">♻ Сбросить прогресс приёмки</button>
+      </div>
+    </div>
+  </div>
+
+  <button class="scan-btn" id="scanBtn" onclick="startScanner()" disabled>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4V1h3M20 1h3v3M1 20v3h3M20 23h3v-3"/><line x1="1" y1="12" x2="23" y2="12"/></svg>
+    Сканировать
+  </button>
+</div>
+
+<!-- Сканер -->
+<div class="scanner-overlay" id="scannerOverlay">
+  <div class="scanner-header">
+    <h2>Сканирование</h2>
+    <div class="scanner-header-btns">
+      <button class="scanner-close" id="torchBtn" onclick="toggleTorch()" title="Фонарик" style="font-size:20px;">🔦</button>
+      <button class="scanner-close" onclick="stopScanner()">✕</button>
+    </div>
+  </div>
+  <div class="scanner-body" id="scannerBody">
+    <div id="videoContainer"></div>
+    <div class="scan-frame"></div>
+    <div class="debug-info" id="debugInfo"></div>
+  </div>
+  <div class="scanner-bottom">
+    <input type="text" id="manualCode" placeholder="EAN, артикул или название…" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false">
+    <button onclick="submitManualCode()">OK</button>
+    <label class="scanner-close" style="border-style:solid;cursor:pointer;font-size:15px;" title="Сфотографировать">
+      📷
+      <input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none;">
+    </label>
+  </div>
+</div>
+
+<!-- Карточка результата (приёмка товара из поставки) -->
+<div class="result-card" id="resultCard">
+  <div class="rc-header">
+    <div class="rc-code" id="rcCode"></div>
+    <button class="scanner-close" onclick="closeResultCard()" title="Закрыть">✕</button>
+  </div>
+  <div class="rc-scroll" id="rcScroll">
+    <div class="rc-marking" id="rcMarking"></div>
+    <div class="rc-block" id="rcSuccessBanner" style="display:none;">
+      <div class="rc-val" style="text-align:center;font-size:17px;">✓ Принято успешно</div>
+    </div>
+    <div class="rc-block">
+      <div class="rc-lbl">Артикул</div>
+      <div class="rc-val mono" id="rcArticle"></div>
+    </div>
+    <div class="rc-block" id="rcShortNameBlock">
+      <div class="rc-lbl">Название</div>
+      <div class="rc-val" id="rcShortName"></div>
+    </div>
+    <div class="rc-block" id="rcLevelBlock">
+      <div class="rc-lbl">Уровень упаковки (по EAN)</div>
+      <div class="rc-val" id="rcLevel"></div>
+    </div>
+    <div class="rc-block" id="rcPlaceBlock">
+      <div class="rc-lbl">Места (паллета №)</div>
+      <div class="rc-val" id="rcPlace"></div>
+    </div>
+    <div class="rc-block" id="rcProgressBlock">
+      <div class="rc-lbl">По поставке</div>
+      <div class="rc-progress">
+        <div class="rcp-chip"><div class="rcp-num" id="rcpTotal">—</div><div class="rcp-lbl">всего</div></div>
+        <div class="rcp-chip"><div class="rcp-num acc" id="rcpAcc">—</div><div class="rcp-lbl">принято</div></div>
+        <div class="rcp-chip"><div class="rcp-num rem" id="rcpRem">—</div><div class="rcp-lbl">осталось</div></div>
+      </div>
+    </div>
+    <div class="rc-block" id="rcAggBlock" style="display:none;">
+      <div class="rc-lbl">Агрегация</div>
+      <div class="rc-val" id="rcAgg"></div>
+    </div>
+    <div class="rc-block" id="rcCommentBlock" style="display:none;">
+      <div class="rc-lbl">Комментарий</div>
+      <div class="rc-val" id="rcComment" style="font-size:14px;font-weight:500;"></div>
+    </div>
+    <details class="rc-details" id="rcMoreDetails">
+      <summary>Подробнее по позиции</summary>
+      <div class="rc-details-body" id="rcMoreBody"></div>
+    </details>
+  </div>
+
+  <!-- Sticky bottom: окно ввода + Принять + Далее -->
+  <div class="rc-actions" id="rcActions">
+    <div class="qty-hint" id="qtyHint"></div>
+    <div class="rc-qty-input-wrap" id="qtyWrap">
+      <button class="rc-qty-step" onclick="adjustAcceptQty(-1)" type="button">−</button>
+      <input type="number" class="rc-qty-input" id="acceptQtyInput" inputmode="numeric" min="0" step="1" placeholder="">
+      <button class="rc-qty-step" onclick="adjustAcceptQty(1)" type="button">+</button>
+    </div>
+    <button class="rc-accept-btn" id="acceptBtn" onclick="acceptCurrentItem()">
+      ✓ Принять товар
+    </button>
+    <button class="rc-next-btn" onclick="resumeScanner()">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+      Далее (новое сканирование)
+    </button>
+  </div>
+</div>
+
+<!-- Карточка "Товара нет в поставке" -->
+<div class="result-card" id="offCard">
+  <div class="rc-header">
+    <div class="rc-code" id="offCode"></div>
+    <button class="scanner-close" onclick="closeOffCard()" title="Закрыть">✕</button>
+  </div>
+  <div class="rc-scroll" id="offScroll">
+    <div class="rc-marking warn">⛔ Товара нет в поставке</div>
+    <div class="rc-block" id="offSuccessBanner" style="display:none;">
+      <div class="rc-val" style="text-align:center;font-size:17px;">✓ Товар принят (вне поставки)</div>
+    </div>
+    <div class="rc-block">
+      <div class="rc-lbl">Отсканированный код</div>
+      <div class="rc-val mono" id="offEanShown"></div>
+    </div>
+
+    <!-- Форма (появляется после нажатия "Принять товар") -->
+    <div id="offFormSection" style="display:none;">
+      <div class="off-form-block">
+        <div class="off-form-row">
+          <label>EAN <span class="off-required">*</span></label>
+          <input type="text" id="offFieldEan" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false">
+        </div>
+        <div class="off-form-row">
+          <label>Артикул</label>
+          <input type="text" id="offFieldArticle" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false">
+        </div>
+        <div class="off-form-row">
+          <label>Название</label>
+          <input type="text" id="offFieldName" autocomplete="off">
+        </div>
+        <div class="off-form-row">
+          <label>Номер места (паллета №)</label>
+          <input type="text" id="offFieldPlace" autocomplete="off">
+        </div>
+        <div class="off-form-row">
+          <label>Количество <span class="off-required">*</span></label>
+          <input type="number" id="offFieldQty" inputmode="numeric" min="1" step="1">
+        </div>
+        <div class="error-msg" id="offFormError"></div>
+      </div>
+    </div>
+
+    <details class="rc-details" id="offMoreDetails" style="display:none;">
+      <summary>Уже принято вне поставки (тек. сессия)</summary>
+      <div class="rc-details-body" id="offMoreBody"></div>
+    </details>
+  </div>
+
+  <div class="rc-actions" id="offActions">
+    <button class="rc-accept-btn" id="offAcceptBtn" onclick="offAcceptClick()">
+      ✓ Принять товар
+    </button>
+    <button class="rc-next-btn" onclick="closeOffCard()">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+      Далее (новое сканирование)
+    </button>
+  </div>
+</div>
+
+<!-- Picker (несколько совпадений) -->
+<div class="picker-overlay" id="pickerOverlay">
+  <div class="picker-header">
+    <div>
+      <div class="picker-title">Найдено несколько позиций</div>
+      <div class="picker-sub" id="pickerSub"></div>
+    </div>
+    <button class="scanner-close" onclick="closePicker()" title="Закрыть">✕</button>
+  </div>
+  <div class="picker-list" id="pickerList"></div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ===================== IndexedDB =====================
+const DB_NAME = 'AbbAcceptanceScanner', DB_VER = 1;
+const META_KEY_DELIVERY = 'savedDelivery';   // содержит файл поставки + meta
+const META_KEY_STATE    = 'savedState';      // accepted-by-rowKey + extras
+let db = null;
+
+function openDB() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open(DB_NAME, DB_VER);
+    r.onupgradeneeded = e => {
+      const d = e.target.result;
+      if (!d.objectStoreNames.contains('meta')) d.createObjectStore('meta', { keyPath: 'key' });
+    };
+    r.onsuccess = () => { db = r.result; res(db); };
+    r.onerror = () => rej(r.error);
+  });
+}
+function dbPut(store, data) { return new Promise((res, rej) => { const tx = db.transaction(store, 'readwrite'); tx.objectStore(store).put(data); tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); }); }
+function dbGet(store, key)  { return new Promise((res, rej) => { const tx = db.transaction(store, 'readonly');  const r = tx.objectStore(store).get(key); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
+function dbDelete(store, key) { return new Promise((res, rej) => { const tx = db.transaction(store, 'readwrite'); tx.objectStore(store).delete(key); tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); }); }
+
+// ===================== Sound =====================
+let audioCtx = null;
+function initAudio() { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); if (audioCtx.state === 'suspended') audioCtx.resume(); }
+function playTone(f, dur, type='sine', vol=0.3) {
+  if (!audioCtx) return;
+  try {
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.connect(g); g.connect(audioCtx.destination);
+    o.type = type; o.frequency.value = f;
+    g.gain.setValueAtTime(vol, audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+    o.start(); o.stop(audioCtx.currentTime + dur);
+  } catch(e) {}
+}
+function playSuccess() { playTone(880,.12,'sine',.4); setTimeout(()=>playTone(1108,.12,'sine',.4),90); setTimeout(()=>playTone(1320,.2,'sine',.4),180); }
+function playAccept()  { playTone(660,.10,'sine',.4); setTimeout(()=>playTone(990,.18,'sine',.4),100); }
+function playError()   { playTone(300,.25,'square',.3); setTimeout(()=>playTone(200,.3,'square',.3),180); }
+function playWarn()    { playTone(500,.12,'square',.3); setTimeout(()=>playTone(380,.18,'square',.3),120); }
+
+// ===================== State =====================
+// delivery = {
+//   fileName, loadedAt, savedAt, restoredFromDevice,
+//   rows: [{ rowKey, num, article, name, shortName, qty, unit, places,
+//            marking ('yes'|'no'|'unknown'), aggregation (number|null),
+//            comment (string|null), eanItems: [{level, ean, qtyPer}],
+//            allEans: [{level, ean, qtyPer}], displayName,
+//            accepted: number }],
+//   eansByCode: Map(ean string → [{rowIdx, level, qtyPer}])
+// }
+// extras = [{ id, time, ean, article, name, place, qty }]
+let delivery = null;
+let extras = [];
+let currentListFilter = 'all';   // all | done | partial | over | extra
+
+let paused = false;
+let currentRowIdx = null;        // индекс строки в delivery.rows для текущей карточки
+let currentLevelInfo = null;     // { level, ean, qtyPer } если карточка открыта по EAN
+let currentMode = null;          // 'item' | 'off' | null
+let offState = {                 // состояние карточки "вне поставки"
+  scannedEan: '',
+  formShown: false,
+  accepted: false
+};
+let lastScannedCode = '';
+let lastScanTime = 0;
+
+// ===================== Утилиты =====================
+function esc(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
+function fmtRu(value) { return value ? new Date(value).toLocaleString('ru') : '—'; }
+
+function displayNameForRow(r) {
+  const displayName = String(r && r.displayName ? r.displayName : '').trim();
+  return displayName || '—';
+}
+
+function normalizeEan(v) {
+  if (v === null || v === undefined) return '';
+  let s = String(v).trim();
+  if (!s) return '';
+  if (/^\d+\.\d+[eE]\+?\d+$/.test(s)) {
+    try { s = BigInt(Number(s)).toString(); } catch(e) {}
+  }
+  s = s.replace(/\.0+$/, '').replace(/\s+/g, '');
+  return s;
+}
+
+function extractPieces(unitsStr) {
+  if (!unitsStr) return null;
+  const m = String(unitsStr).match(/(\d+)\s*piece/i);
+  if (m) return parseInt(m[1], 10);
+  const m2 = String(unitsStr).match(/(\d+)/);
+  return m2 ? parseInt(m2[1], 10) : null;
+}
+
+function firstWords(str, n) {
+  if (!str) return '';
+  const parts = String(str).trim().split(/\s+/);
+  return parts.slice(0, n).join(' ');
+}
+
+function parseNumberCell(v) {
+  if (v == null) return null;
+  if (typeof v === 'number') return v;
+  const s = String(v).trim().replace(',', '.');
+  if (!s) return null;
+  const n = parseFloat(s);
+  return isNaN(n) ? null : n;
+}
+
+function toUint8Array(data) {
+  if (data instanceof Uint8Array) return data;
+  if (data instanceof ArrayBuffer) return new Uint8Array(data);
+  if (ArrayBuffer.isView(data)) return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+  throw new Error('Неизвестный формат данных');
+}
+function cloneArrayBuffer(data) {
+  const bytes = toUint8Array(data);
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+}
+
+function showToast(msg, kind='', dur=2200) {
+  const t = document.getElementById('toast');
+  t.className = 'toast' + (kind ? ' ' + kind : '');
+  t.textContent = msg;
+  // force reflow then show
+  void t.offsetWidth;
+  t.classList.add('show');
+  clearTimeout(showToast._tm);
+  showToast._tm = setTimeout(() => t.classList.remove('show'), dur);
+}
+
+function showHelp() {
+  alert(
+    'ABB Приёмка — пошагово:\n\n' +
+    '1) Загрузите файл поставки (xlsx).\n' +
+    '2) В списке маркируемые позиции — вверху.\n' +
+    '3) Нажмите «Сканировать» или тапните по позиции, чтобы открыть карточку.\n' +
+    '4) Введите количество принятого и нажмите «Принять товар». Серым в окошке — ожидаемое количество по этому EAN.\n' +
+    '5) Если код не найден в поставке — откроется отдельная карточка. По кнопке «Принять товар» появятся поля для ручного ввода (EAN, артикул, название, место, количество).\n' +
+    '6) В разделе «Действия» — экспорт результатов и сброс прогресса.\n\n' +
+    'Прогресс приёмки и файл хранятся локально на устройстве.'
+  );
+}
+
+// ===================== Парсинг файла поставки =====================
+function parseDelivery(arrayBuffer, fileName) {
+  const wb = XLSX.read(arrayBuffer, { type: 'array' });
+  const sheetName = wb.SheetNames[0];
+  const ws = wb.Sheets[sheetName];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+  if (!rows.length) throw new Error('Пустой лист');
+
+  // Заголовок — первая непустая строка
+  let headerRow = 0;
+  while (headerRow < rows.length && rows[headerRow].every(c => String(c).trim() === '')) headerRow++;
+  if (headerRow >= rows.length) throw new Error('Не найден заголовок');
+
+  const header = rows[headerRow].map(h => String(h ?? '').trim());
+  const headerLower = header.map(h => h.toLowerCase());
+
+  // Найти столбцы (берём первое совпадение, чтобы дублирующая «МАРКИРОВКА» не путала)
+  const findIdx = (names) => {
+    for (const name of names) {
+      const i = headerLower.indexOf(String(name).toLowerCase());
+      if (i >= 0) return i;
+    }
+    return -1;
+  };
+
+  const iNum     = findIdx(['№', 'No', 'N']);
+  const iArticle = findIdx(['article', 'артикул']);
+  const iName    = findIdx(['Товар', 'товар', 'наименование', 'name']);
+  const iQty     = findIdx(['Кол-во', 'кол-во', 'количество', 'qty']);
+  const iUnit    = findIdx(['Ед.', 'ед.', 'ед', 'единица', 'unit']);
+  const iPlaces  = findIdx(['Паллета №', 'паллета №', 'паллета', 'место', 'места']);
+  const iMark    = findIdx(['МАРКИРОВКА', 'маркировка']);
+  const iAgg     = findIdx(['Агрегация', 'агрегация']);
+  const iComm    = findIdx(['Комментарий', 'комментарий']);
+
+  const iDispName = findIdx(['display_name']);
+  const iEan      = findIdx(['ean']);
+  const iP1U = findIdx(['package_level_1_units']);
+  const iP1E = findIdx(['package_level_1_ean']);
+  const iP2U = findIdx(['package_level_2_units']);
+  const iP2E = findIdx(['package_level_2_ean']);
+  const iP3U = findIdx(['package_level_3_units']);
+  const iP3E = findIdx(['package_level_3_ean']);
+
+  if (iArticle < 0 || iName < 0 || iQty < 0) {
+    throw new Error('В файле поставки должны быть колонки: «article», «Товар», «Кол-во». Заголовки в верхней строке.');
+  }
+
+  const out = [];
+  const eansByCode = new Map();
+
+  for (let r = headerRow + 1; r < rows.length; r++) {
+    const row = rows[r];
+    if (!row || row.every(c => String(c ?? '').trim() === '')) continue;
+
+    const article = String(row[iArticle] ?? '').trim();
+    if (!article) continue;
+
+    const num = iNum >= 0 ? parseNumberCell(row[iNum]) : null;
+    const name = String(row[iName] ?? '').trim();
+    const qty = parseNumberCell(row[iQty]) || 0;
+    const unit = iUnit >= 0 ? String(row[iUnit] ?? '').trim() || 'шт' : 'шт';
+    const places = iPlaces >= 0 ? String(row[iPlaces] ?? '').trim() : '';
+
+    let marking = 'unknown';
+    if (iMark >= 0) {
+      const m = String(row[iMark] ?? '').trim().toLowerCase();
+      if (m === 'да') marking = 'yes';
+      else if (m === 'нет') marking = 'no';
+    }
+
+    const aggregation = iAgg >= 0 ? parseNumberCell(row[iAgg]) : null;
+    const comment = iComm >= 0 ? String(row[iComm] ?? '').trim() : '';
+    const displayName = iDispName >= 0 ? String(row[iDispName] ?? '').trim() : '';
+
+    const eanItems = [];
+    const pushItem = (level, eanRaw, qtyPer) => {
+      const e = normalizeEan(eanRaw);
+      if (!e) return;
+      eanItems.push({ level, ean: e, qtyPer: qtyPer == null ? 1 : qtyPer });
+    };
+    if (iEan >= 0)  pushItem('EAN', row[iEan], 1);
+    if (iP1E >= 0)  pushItem('PackageLevel1', row[iP1E], iP1U >= 0 ? extractPieces(row[iP1U]) : 1);
+    if (iP2E >= 0)  pushItem('PackageLevel2', row[iP2E], iP2U >= 0 ? extractPieces(row[iP2U]) : null);
+    if (iP3E >= 0)  pushItem('PackageLevel3', row[iP3E], iP3U >= 0 ? extractPieces(row[iP3U]) : null);
+
+    const rowKey = `R${r}|${article}|${num != null ? num : ''}|${places}`;
+    const idx = out.length;
+    const rec = {
+      idx,
+      rowKey,
+      num,
+      article,
+      name,
+      shortName: firstWords(name, 2),
+      qty,
+      unit,
+      places,
+      marking,
+      aggregation,
+      comment,
+      displayName,
+      eanItems,
+      accepted: 0
+    };
+    out.push(rec);
+
+    // Индекс EAN → строки
+    for (const it of eanItems) {
+      if (!eansByCode.has(it.ean)) eansByCode.set(it.ean, []);
+      eansByCode.get(it.ean).push({ rowIdx: idx, level: it.level, qtyPer: it.qtyPer });
+    }
+  }
+
+  return {
+    fileName,
+    loadedAt: new Date().toISOString(),
+    rows: out,
+    eansByCode,
+    sheetName
+  };
+}
+
+// ===================== Сохранение / восстановление =====================
+async function saveDeliveryToDevice(arrayBuffer, fileName) {
+  if (!db) return null;
+  const savedAt = new Date().toISOString();
+  await dbPut('meta', {
+    key: META_KEY_DELIVERY,
+    fileName,
+    savedAt,
+    fileData: cloneArrayBuffer(arrayBuffer)
+  });
+  return savedAt;
+}
+
+async function saveState() {
+  if (!db || !delivery) return;
+  const acceptedByKey = {};
+  for (const r of delivery.rows) acceptedByKey[r.rowKey] = r.accepted || 0;
+  await dbPut('meta', {
+    key: META_KEY_STATE,
+    acceptedByKey,
+    extras,
+    savedAt: new Date().toISOString()
+  });
+}
+
+async function clearState() {
+  try { await dbDelete('meta', META_KEY_STATE); } catch(e) {}
+}
+async function clearStoredDelivery() {
+  try { await dbDelete('meta', META_KEY_DELIVERY); } catch(e) {}
+  await clearState();
+}
+
+async function restoreDelivery() {
+  if (!db) return false;
+  const saved = await dbGet('meta', META_KEY_DELIVERY);
+  if (!saved || !saved.fileData) return false;
+  try {
+    const bytes = toUint8Array(saved.fileData);
+    delivery = parseDelivery(bytes, saved.fileName || 'Поставка.xlsx');
+    delivery.savedAt = saved.savedAt || null;
+    delivery.restoredFromDevice = true;
+
+    const st = await dbGet('meta', META_KEY_STATE);
+    if (st) {
+      if (st.acceptedByKey) {
+        for (const r of delivery.rows) {
+          if (typeof st.acceptedByKey[r.rowKey] === 'number') r.accepted = st.acceptedByKey[r.rowKey];
+        }
+      }
+      extras = Array.isArray(st.extras) ? st.extras : [];
+    } else {
+      extras = [];
+    }
+    return true;
+  } catch (e) {
+    console.error('restoreDelivery failed:', e);
+    return false;
+  }
+}
+
+// ===================== Загрузка нового файла =====================
+async function loadDeliveryFromBuffer(arrayBuffer, fileName) {
+  try {
+    const bytes = toUint8Array(arrayBuffer);
+    const parsed = parseDelivery(bytes, fileName);
+    delivery = parsed;
+    extras = [];
+    currentListFilter = 'all';
+    try {
+      const savedAt = await saveDeliveryToDevice(bytes, fileName);
+      delivery.savedAt = savedAt;
+      delivery.persisted = true;
+    } catch(e) {
+      console.error('saveDeliveryToDevice failed:', e);
+      delivery.persisted = false;
+    }
+    await clearState();
+    showMain();
+    showToast('Файл поставки загружен: ' + parsed.rows.length + ' позиций', 'success');
+    return true;
+  } catch (e) {
+    alert('Не удалось загрузить файл поставки:\n\n' + (e.message || e));
+    console.error(e);
+    return false;
+  }
+}
+
+function loadNewDelivery() {
+  if (delivery && !confirm('Загрузить другой файл поставки?\n\nТекущий прогресс приёмки будет очищен.')) return;
+  document.getElementById('fileInput').click();
+}
+
+async function resetProgress() {
+  if (!delivery) return;
+  if (!confirm('Сбросить весь прогресс приёмки?\n\nПринятое количество и список «вне поставки» обнулятся. Файл поставки останется.')) return;
+  for (const r of delivery.rows) r.accepted = 0;
+  extras = [];
+  await saveState();
+  renderMain();
+  showToast('Прогресс приёмки сброшен', 'warn');
+}
+
+// ===================== Главный экран =====================
+function showMain() {
+  document.getElementById('uploadSection').style.display = 'none';
+  document.getElementById('mainSection').style.display = 'block';
+  document.getElementById('scanBtn').disabled = false;
+  document.getElementById('exportBtn').style.display = '';
+  renderMain();
+}
+
+function rowState(r) {
+  if (r.qty <= 0) {
+    if ((r.accepted || 0) > 0) return 'over';
+    return 'pending';
+  }
+  if ((r.accepted || 0) === 0) return 'pending';
+  if ((r.accepted || 0) >= r.qty) {
+    return (r.accepted || 0) > r.qty ? 'over' : 'done';
+  }
+  return 'partial';
+}
+
+function syncFilterChips() {
+  const chipIds = {
+    all: 'filterAllChip',
+    done: 'filterDoneChip',
+    partial: 'filterPartialChip',
+    over: 'filterOverChip',
+    extra: 'filterExtraChip'
+  };
+  Object.entries(chipIds).forEach(([filter, id]) => {
+    const el = document.getElementById(id);
+    if (el) el.classList.toggle('active', currentListFilter === filter);
+  });
+}
+
+function setListFilter(filter) {
+  currentListFilter = ['all', 'done', 'partial', 'over', 'extra'].includes(filter) ? filter : 'all';
+  renderMain();
+}
+
+function renderMain() {
+  if (!delivery) return;
+  document.getElementById('deliveryName').textContent = delivery.fileName || 'Поставка';
+  const metaParts = [];
+  if (delivery.restoredFromDevice && delivery.savedAt) metaParts.push('Восстановлено: ' + fmtRu(delivery.savedAt));
+  else if (delivery.loadedAt) metaParts.push('Загружено: ' + fmtRu(delivery.loadedAt));
+  if (delivery.sheetName) metaParts.push('Лист: ' + delivery.sheetName);
+  document.getElementById('deliveryMeta').textContent = metaParts.join(' • ');
+
+  // Статистика
+  const total = delivery.rows.length;
+  let done = 0, over = 0, partial = 0;
+  for (const r of delivery.rows) {
+    const s = rowState(r);
+    if (s === 'done') done++;
+    else if (s === 'over') over++;
+    else if (s === 'partial') partial++;
+  }
+  document.getElementById('statTotal').textContent = total;
+  document.getElementById('statDone').textContent = done;
+  document.getElementById('statPartial').textContent = partial;
+  document.getElementById('statOver').textContent = over;
+  document.getElementById('statExtra').textContent = extras.length;
+  syncFilterChips();
+
+  renderList();
+}
+
+function matchesQuery(r, q) {
+  if (!q) return true;
+  q = q.toLowerCase();
+  if (r.article && r.article.toLowerCase().includes(q)) return true;
+  if (r.name && r.name.toLowerCase().includes(q)) return true;
+  if (r.places && r.places.toLowerCase().includes(q)) return true;
+  if (r.displayName && r.displayName.toLowerCase().includes(q)) return true;
+  for (const it of r.eanItems) if (it.ean.includes(q)) return true;
+  return false;
+}
+
+function renderList() {
+  const cont = document.getElementById('listContainer');
+  if (!delivery || !delivery.rows.length) {
+    cont.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div><div>Нет позиций</div></div>';
+    return;
+  }
+  const q = (document.getElementById('searchBar').value || '').trim();
+
+  // Группы:
+  // 1) extras (вне поставки)
+  // 2) marked (МАРКИРОВКА=yes)
+  // 3) others
+  let rowsForList = delivery.rows;
+  if (currentListFilter !== 'all' && currentListFilter !== 'extra') {
+    rowsForList = rowsForList.filter(r => rowState(r) === currentListFilter);
+  } else if (currentListFilter === 'extra') {
+    rowsForList = [];
+  }
+  const visibleRows = rowsForList.filter(r => matchesQuery(r, q));
+
+  const extrasForList = (currentListFilter === 'all' || currentListFilter === 'extra') ? extras : [];
+  const extrasMatched = !q ? extrasForList : extrasForList.filter(e => {
+    const s = q.toLowerCase();
+    return (e.ean && e.ean.toLowerCase().includes(s))
+      || (e.article && e.article.toLowerCase().includes(s))
+      || (e.name && e.name.toLowerCase().includes(s))
+      || (e.place && e.place.toLowerCase().includes(s));
+  });
+
+  const marked = visibleRows.filter(r => r.marking === 'yes');
+  const other  = visibleRows.filter(r => r.marking !== 'yes');
+
+  let html = '';
+
+  if (extrasMatched.length) {
+    html += '<div class="section-title first">⚠ <strong>Вне поставки</strong> (' + extrasMatched.length + ')</div>';
+    html += extrasMatched.map(e => renderExtraItem(e)).join('');
+  }
+  if (marked.length) {
+    html += '<div class="section-title' + (extrasMatched.length ? '' : ' first') + '">🏷 <strong>Маркируемые</strong> (' + marked.length + ')</div>';
+    html += marked.map(r => renderRowItem(r)).join('');
+  }
+  if (other.length) {
+    html += '<div class="section-title' + ((extrasMatched.length || marked.length) ? '' : ' first') + '"><strong>Прочие</strong> (' + other.length + ')</div>';
+    html += other.map(r => renderRowItem(r)).join('');
+  }
+  if (!html) html = '<div class="empty-state"><div class="empty-icon">🔍</div><div>Ничего не найдено</div></div>';
+  cont.innerHTML = html;
+
+  // навешиваем обработчики (делегирование тоже подойдёт, но сделаем явно)
+  cont.querySelectorAll('[data-row-idx]').forEach(el => {
+    el.addEventListener('click', () => {
+      const idx = parseInt(el.getAttribute('data-row-idx'), 10);
+      openRowCard(idx, null, null);
+    });
+  });
+  cont.querySelectorAll('[data-extra-id]').forEach(el => {
+    el.addEventListener('click', () => {
+      const id = el.getAttribute('data-extra-id');
+      openExtraView(id);
+    });
+  });
+}
+
+function renderRowItem(r) {
+  const st = rowState(r);
+  const cls = (st === 'done' ? ' done' : st === 'over' ? ' over' : st === 'partial' ? ' partial' : '');
+  const acc = r.accepted || 0;
+  const rem = Math.max(0, r.qty - acc);
+  const overBy = acc > r.qty ? acc - r.qty : 0;
+
+  const badges = [];
+  if (r.marking === 'yes') badges.push('<span class="li-badge mark" title="Маркируется">🏷</span>');
+  if (r.aggregation != null && !isNaN(r.aggregation)) badges.push('<span class="li-badge agg" title="Агрегация">⚙ ' + esc(r.aggregation) + '</span>');
+  if (overBy > 0) badges.push('<span class="li-badge over" title="Превышено">+' + overBy + '</span>');
+
+  const place = r.places ? '<span class="li-place">' + esc(r.places) + '</span>' : '';
+  const displayName = String(r.displayName || '').trim();
+  const displayNameHtml = displayName
+    ? '<div class="li-display-name"><b>Название:</b> ' + esc(displayName) + '</div>'
+    : '';
+  const remHtml = overBy > 0
+    ? '<span class="li-rem over">+' + overBy + ' ' + esc(r.unit) + ' сверх</span>'
+    : (rem > 0 ? '<span class="li-rem">осталось ' + rem + ' ' + esc(r.unit) + '</span>' : (acc > 0 ? '<span class="li-rem" style="color:var(--green);font-weight:700;">✓ принято полностью</span>' : ''));
+
+  return '<div class="li-row' + cls + '" data-row-idx="' + r.idx + '">'
+    + '<div class="li-head">'
+      + '<span class="li-num">№' + esc(r.num != null ? r.num : (r.idx + 1)) + '</span>'
+      + '<span class="li-art">' + esc(r.article) + '</span>'
+      + '<div class="li-badges">' + badges.join('') + '</div>'
+    + '</div>'
+    + '<div class="li-name">' + esc(r.shortName || r.article) + '</div>'
+    + displayNameHtml
+    + '<div class="li-foot">'
+      + place
+      + '<span class="li-prog"><span class="li-prog-acc">' + acc + '</span> / ' + esc(r.qty) + ' ' + esc(r.unit) + '</span>'
+      + remHtml
+    + '</div>'
+  + '</div>';
+}
+
+function renderExtraItem(e) {
+  return '<div class="li-row extra" data-extra-id="' + esc(e.id) + '">'
+    + '<div class="li-head">'
+      + '<span class="li-num">⛔</span>'
+      + '<span class="li-art">' + esc(e.article || e.ean || '—') + '</span>'
+      + '<div class="li-badges"><span class="li-badge over" title="Вне поставки">ВНЕ</span></div>'
+    + '</div>'
+    + '<div class="li-name">' + esc(e.name ? firstWords(e.name, 4) : (e.ean || '—')) + '</div>'
+    + '<div class="li-foot">'
+      + (e.place ? '<span class="li-place">' + esc(e.place) + '</span>' : '')
+      + '<span class="li-prog"><span class="li-prog-acc">' + esc(e.qty) + '</span> ' + esc(e.unit || 'шт') + '</span>'
+      + '<span class="li-rem">EAN ' + esc(e.ean || '—') + '</span>'
+    + '</div>'
+  + '</div>';
+}
+
+function switchTab(t) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === t));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.toggle('active', c.id === 'tab-' + t));
+}
+
+document.getElementById('searchBar').addEventListener('input', () => renderList());
+
+// ===================== Сканер =====================
+let isScanning = false;
+let videoStream = null;
+let scanAnimFrame = null;
+let scannerMode = 'none';
+let torchOn = false;
+let barcodeDetector = null;
+
+function hasBarcodeDetector() { return typeof BarcodeDetector !== 'undefined'; }
+
+async function startScanner() {
+  initAudio();
+  paused = false;
+  document.getElementById('scannerOverlay').classList.add('active');
+  isScanning = true;
+  document.getElementById('debugInfo').textContent = 'Запуск камеры…';
+
+  if (hasBarcodeDetector()) {
+    try { await startNativeScanner(); return; }
+    catch(e) { console.warn('BarcodeDetector failed, fallback Quagga:', e); }
+  }
+  try { await startQuaggaScanner(); }
+  catch(err) {
+    console.error('Scanner error:', err);
+    document.getElementById('debugInfo').textContent = 'Ошибка: ' + (err.message || err);
+    alert('Ошибка камеры: ' + (err.message || err) +
+      '\n\nПопробуйте:\n1. Разрешить доступ к камере\n2. Нажать 📷 для фото\n3. Ввести код вручную');
+  }
+}
+
+async function startNativeScanner() {
+  scannerMode = 'native';
+  const container = document.getElementById('videoContainer');
+  container.innerHTML = '<video id="nativeVideo" autoplay playsinline webkit-playsinline muted style="width:100%;height:100%;object-fit:cover;"></video>';
+  const video = document.getElementById('nativeVideo');
+
+  videoStream = await navigator.mediaDevices.getUserMedia({
+    video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+    audio: false
+  });
+  video.srcObject = videoStream;
+  await video.play();
+  await new Promise(r => { const c = () => { if (video.videoWidth > 0) r(); else requestAnimationFrame(c); }; c(); });
+
+  barcodeDetector = new BarcodeDetector({
+    formats: ['code_128','ean_13','ean_8','code_39','code_93','itf','codabar','upc_a','upc_e']
+  });
+
+  document.getElementById('debugInfo').textContent =
+    'Камера: ' + video.videoWidth + 'x' + video.videoHeight + ' | Наведите на штрих-код';
+
+  async function scanFrame() {
+    if (!isScanning || scannerMode !== 'native') return;
+    if (!paused) {
+      try {
+        const results = await barcodeDetector.detect(video);
+        for (const r of results) {
+          if (r.rawValue) { await onScanSuccess(r.rawValue); break; }
+        }
+      } catch(e) {}
+    }
+    scanAnimFrame = requestAnimationFrame(scanFrame);
+  }
+  scanAnimFrame = requestAnimationFrame(scanFrame);
+}
+
+async function startQuaggaScanner() {
+  scannerMode = 'quagga';
+  const container = document.getElementById('videoContainer');
+  container.innerHTML = '';
+  await new Promise((resolve, reject) => {
+    Quagga.init({
+      inputStream: {
+        name: 'Live', type: 'LiveStream', target: container,
+        constraints: { facingMode: 'environment', width: { min: 640, ideal: 1280, max: 1920 }, height: { min: 480, ideal: 720, max: 1080 }, focusMode: 'continuous' },
+        area: { top: '20%', right: '5%', left: '5%', bottom: '20%' }
+      },
+      locator: { patchSize: 'large', halfSample: false },
+      numOfWorkers: 0, frequency: 15,
+      decoder: { readers: ['code_128_reader','ean_reader','ean_8_reader','code_39_reader','codabar_reader'], multiple: false },
+      locate: true
+    }, function(err) { if (err) { reject(err); return; } resolve(); });
+  });
+  Quagga.start();
+  const video = container.querySelector('video');
+  if (video) {
+    video.setAttribute('playsinline', 'true');
+    const wait = () => {
+      if (video.videoWidth > 0)
+        document.getElementById('debugInfo').textContent = 'Камера: ' + video.videoWidth + 'x' + video.videoHeight + ' | Наведите на штрих-код';
+      else setTimeout(wait, 200);
+    };
+    wait();
+  }
+  Quagga.onDetected(async function(result) {
+    if (!isScanning || paused) return;
+    if (!result || !result.codeResult || !result.codeResult.code) return;
+    await onScanSuccess(result.codeResult.code);
+  });
+}
+
+async function toggleTorch() {
+  try {
+    let track = null;
+    if (scannerMode === 'native' && videoStream) track = videoStream.getVideoTracks()[0];
+    else if (scannerMode === 'quagga') {
+      const v = document.querySelector('#videoContainer video');
+      if (v && v.srcObject) track = v.srcObject.getVideoTracks()[0];
+    }
+    if (!track) return;
+    const caps = track.getCapabilities ? track.getCapabilities() : {};
+    if (!caps.torch) { document.getElementById('debugInfo').textContent = 'Фонарик не поддерживается'; return; }
+    torchOn = !torchOn;
+    await track.applyConstraints({ advanced: [{ torch: torchOn }] });
+    document.getElementById('torchBtn').style.background = torchOn ? 'rgba(255,200,0,0.4)' : 'transparent';
+  } catch(e) { console.error('Torch:', e); }
+}
+
+async function stopScanner() {
+  isScanning = false;
+  paused = false;
+  torchOn = false;
+  const torchBtn = document.getElementById('torchBtn');
+  if (torchBtn) torchBtn.style.background = 'transparent';
+  if (scanAnimFrame) { cancelAnimationFrame(scanAnimFrame); scanAnimFrame = null; }
+  if (videoStream) { videoStream.getTracks().forEach(t => t.stop()); videoStream = null; }
+  try { Quagga.stop(); } catch(e) {}
+  try { Quagga.offDetected(); } catch(e) {}
+  document.getElementById('videoContainer').innerHTML = '';
+  document.getElementById('scannerOverlay').classList.remove('active');
+  scannerMode = 'none';
+  closeResultCard();
+  closeOffCard();
+  closePicker();
+}
+
+function submitManualCode() {
+  const inp = document.getElementById('manualCode');
+  const raw = inp.value.trim();
+  if (!raw) return;
+  inp.value = '';
+  handleManualInput(raw);
+}
+document.getElementById('manualCode').addEventListener('keydown', e => { if (e.key === 'Enter') submitManualCode(); });
+
+document.getElementById('photoInput').addEventListener('change', async function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  this.value = '';
+  document.getElementById('debugInfo').textContent = 'Распознаю фото…';
+  const imgUrl = URL.createObjectURL(file);
+  Quagga.decodeSingle({
+    src: imgUrl, numOfWorkers: 0,
+    inputStream: { size: 1920 },
+    decoder: { readers: ['code_128_reader','ean_reader','ean_8_reader','code_39_reader'] },
+    locate: true, locator: { patchSize: 'large', halfSample: false }
+  }, function(result) {
+    URL.revokeObjectURL(imgUrl);
+    if (result && result.codeResult && result.codeResult.code) {
+      document.getElementById('debugInfo').textContent = 'Найден: ' + result.codeResult.code;
+      onScanSuccess(result.codeResult.code);
+    } else {
+      document.getElementById('debugInfo').textContent = 'Не распознан';
+      alert('Штрих-код не распознан.');
+    }
+  });
+});
+
+function handleManualInput(raw) {
+  const trimmed = String(raw || '').trim();
+  if (!trimmed) return;
+  // Сначала EAN
+  const eanCandidate = normalizeEan(trimmed);
+  const looksLikeEan = eanCandidate.length >= 6 && /^\d+$/.test(trimmed.replace(/\s+/g, ''));
+  if (looksLikeEan && delivery && delivery.eansByCode.has(eanCandidate)) {
+    onScanSuccess(eanCandidate);
+    return;
+  }
+  // Поиск по article (точное совпадение, без регистра)
+  if (delivery) {
+    const q = trimmed.toLowerCase();
+    const matches = delivery.rows.filter(r => r.article.toLowerCase() === q);
+    if (matches.length === 1) { openRowCard(matches[0].idx, null, null); return; }
+    if (matches.length > 1)   { showRowPicker(matches.map(r => ({ rowIdx: r.idx, level: 'EAN', qtyPer: 1 })), trimmed); return; }
+
+    const displayNameExact = delivery.rows.filter(r => String(r.displayName || '').trim().toLowerCase() === q);
+    if (displayNameExact.length === 1) { openRowCard(displayNameExact[0].idx, null, null); return; }
+    if (displayNameExact.length > 1)   { showRowPicker(displayNameExact.map(r => ({ rowIdx: r.idx, level: null, qtyPer: null })), trimmed); return; }
+
+  }
+  // Если не EAN, не артикул и не display_name — показываем off-supply карточку
+  if (looksLikeEan) {
+    onScanSuccess(eanCandidate);
+  } else {
+    openOffCard(trimmed);
+  }
+}
+
+function normalizeEanMatches(matches) {
+  const levelPriority = {
+    'PackageLevel1': 0,
+    'EAN': 1,
+    'PackageLevel2': 2,
+    'PackageLevel3': 3
+  };
+  const bestByRow = new Map();
+  for (const m of matches || []) {
+    const cur = bestByRow.get(m.rowIdx);
+    const curPriority = cur ? (levelPriority[cur.level] ?? 99) : 99;
+    const nextPriority = levelPriority[m.level] ?? 99;
+    if (!cur || nextPriority < curPriority) bestByRow.set(m.rowIdx, m);
+  }
+  return Array.from(bestByRow.values());
+}
+
+async function onScanSuccess(codeRaw) {
+  const code = normalizeEan(codeRaw);
+  if (!code) return;
+  const now = Date.now();
+  if (code === lastScannedCode && now - lastScanTime < 1500) return;
+  lastScannedCode = code;
+  lastScanTime = now;
+  if (navigator.vibrate) navigator.vibrate(60);
+
+  const matches = normalizeEanMatches(delivery ? (delivery.eansByCode.get(code) || []) : []);
+  if (!matches.length) {
+    playWarn();
+    openOffCard(code);
+    return;
+  }
+  if (matches.length === 1) {
+    playSuccess();
+    openRowCard(matches[0].rowIdx, matches[0].level, matches[0].qtyPer, code);
+    return;
+  }
+  // Несколько строк (EAN дублирован) — picker
+  playSuccess();
+  showRowPicker(matches, code);
+}
+
+function showRowPicker(matches, code) {
+  paused = true;
+  document.getElementById('pickerSub').textContent =
+    'Значение «' + code + '» найдено в нескольких позициях. Выберите нужную:';
+  const list = document.getElementById('pickerList');
+  list.innerHTML = '';
+  matches.forEach(m => {
+    const r = delivery.rows[m.rowIdx];
+    const div = document.createElement('div');
+    div.className = 'picker-item';
+    const meta = [
+      r.places ? 'Место ' + r.places : '',
+      r.qty + ' ' + r.unit,
+      r.marking === 'yes' ? '🏷 МАРКИРОВКА' : '',
+      m.level ? m.level + ' (= ' + (m.qtyPer != null ? m.qtyPer : '?') + ' шт)' : ''
+    ].filter(Boolean).join(' · ');
+    div.innerHTML =
+      '<span class="pi-num">№' + esc(r.num != null ? r.num : (r.idx+1)) + '</span>'
+      + '<span class="pi-article">' + esc(r.article) + '</span>'
+      + '<div class="pi-name">' + esc(r.shortName || r.article) + '</div>'
+      + '<div class="pi-meta">' + esc(meta) + '</div>';
+    div.addEventListener('click', () => {
+      closePicker();
+      openRowCard(m.rowIdx, m.level, m.qtyPer, code);
+    });
+    list.appendChild(div);
+  });
+  document.getElementById('pickerOverlay').classList.add('active');
+}
+
+function closePicker() {
+  document.getElementById('pickerOverlay').classList.remove('active');
+  paused = false;
+}
+
+// ===================== Карточка товара (приёмка) =====================
+function openRowCard(rowIdx, level, qtyPer, code) {
+  if (!delivery || !delivery.rows[rowIdx]) return;
+  paused = true;
+  currentMode = 'item';
+  currentRowIdx = rowIdx;
+  currentLevelInfo = level ? { level, qtyPer: qtyPer != null ? qtyPer : 1, ean: code || '' } : null;
+
+  const r = delivery.rows[rowIdx];
+  const card = document.getElementById('resultCard');
+
+  // Сбрасываем "успешно принято"
+  document.getElementById('rcSuccessBanner').style.display = 'none';
+  document.getElementById('rcActions').style.display = '';
+  document.getElementById('qtyWrap').style.display = '';
+  document.getElementById('acceptBtn').style.display = '';
+  document.getElementById('acceptBtn').classList.remove('confirm');
+  document.getElementById('acceptBtn').textContent = '✓ Принять товар';
+
+  // Header code
+  document.getElementById('rcCode').textContent = code ? code : 'Открыто из списка';
+
+  // Маркировка banner
+  const mark = document.getElementById('rcMarking');
+  if (r.marking === 'yes') {
+    mark.textContent = '🏷 МАРКИРОВКА';
+    mark.className = 'rc-marking yes';
+  } else if (r.marking === 'no') {
+    mark.textContent = 'Не маркируется';
+    mark.className = 'rc-marking no';
+  } else {
+    mark.textContent = 'Маркировка: не указана';
+    mark.className = 'rc-marking no';
+  }
+
+  document.getElementById('rcArticle').textContent = r.article;
+  document.getElementById('rcShortName').textContent = displayNameForRow(r);
+
+  // Уровень упаковки (если знаем по скану)
+  if (level) {
+    const levelLabels = {
+      'EAN': 'единица товара',
+      'PackageLevel1': 'упаковка 1-го уровня',
+      'PackageLevel2': 'упаковка 2-го уровня',
+      'PackageLevel3': 'упаковка 3-го уровня'
+    };
+    document.getElementById('rcLevel').innerHTML =
+      '<span style="display:inline-block;padding:3px 9px;border-radius:999px;background:var(--surface2);font-size:12px;font-weight:700;margin-right:6px;">'
+      + esc(level) + '</span> ' + esc(levelLabels[level] || '')
+      + ' (' + (qtyPer != null ? qtyPer : '?') + ' ' + esc(r.unit) + ')';
+    document.getElementById('rcLevelBlock').style.display = '';
+  } else {
+    document.getElementById('rcLevelBlock').style.display = 'none';
+  }
+
+  // Места
+  if (r.places) {
+    document.getElementById('rcPlace').textContent = r.places;
+    document.getElementById('rcPlaceBlock').style.display = '';
+  } else {
+    document.getElementById('rcPlaceBlock').style.display = 'none';
+  }
+
+  // Прогресс
+  renderRcProgress();
+
+  // Агрегация
+  if (r.aggregation != null && !isNaN(r.aggregation)) {
+    document.getElementById('rcAgg').textContent = r.aggregation + ' ' + r.unit;
+    document.getElementById('rcAggBlock').style.display = '';
+  } else {
+    document.getElementById('rcAggBlock').style.display = 'none';
+  }
+
+  // Комментарий
+  if (r.comment && r.comment.trim()) {
+    document.getElementById('rcComment').textContent = r.comment;
+    document.getElementById('rcCommentBlock').style.display = '';
+  } else {
+    document.getElementById('rcCommentBlock').style.display = 'none';
+  }
+
+  // Полное название и список EAN (свёрнутый блок)
+  const det = document.getElementById('rcMoreBody');
+  let detHtml = '';
+  if (r.name && r.name !== displayNameForRow(r)) detHtml += '<div><b>Товар:</b> ' + esc(r.name) + '</div>';
+  if (r.displayName) detHtml += '<div><b>display_name:</b> ' + esc(r.displayName) + '</div>';
+  if (r.eanItems.length) {
+    detHtml += '<div><b>EAN-коды:</b><br>'
+      + r.eanItems.map(it => '· <span style="font-family:monospace;">' + esc(it.ean) + '</span> — ' + esc(it.level) + ' (' + (it.qtyPer != null ? it.qtyPer : '?') + ' ' + esc(r.unit) + ')').join('<br>')
+      + '</div>';
+  }
+  document.getElementById('rcMoreBody').innerHTML = detHtml || '<div>—</div>';
+  document.getElementById('rcMoreDetails').open = false;
+
+  // Поле количества — placeholder = ожидаемое количество по EAN
+  const qtyInput = document.getElementById('acceptQtyInput');
+  qtyInput.value = '';
+  if (level && qtyPer != null) {
+    qtyInput.placeholder = String(qtyPer);
+    document.getElementById('qtyHint').innerHTML = 'Ожидаемое по этому EAN: <b>' + qtyPer + ' ' + esc(r.unit) + '</b> · введите фактическое';
+  } else {
+    qtyInput.placeholder = '';
+    document.getElementById('qtyHint').innerHTML = 'Введите количество принятого (' + esc(r.unit) + ')';
+  }
+
+  card.classList.add('active');
+  // Скроллим в начало
+  document.getElementById('rcScroll').scrollTop = 0;
+}
+
+function renderRcProgress() {
+  if (currentRowIdx == null || !delivery) return;
+  const r = delivery.rows[currentRowIdx];
+  const acc = r.accepted || 0;
+  const rem = Math.max(0, r.qty - acc);
+  document.getElementById('rcpTotal').textContent = r.qty;
+  const accEl = document.getElementById('rcpAcc');
+  accEl.textContent = acc;
+  accEl.classList.toggle('over', acc > r.qty);
+  const remEl = document.getElementById('rcpRem');
+  if (acc > r.qty) {
+    remEl.textContent = '+' + (acc - r.qty);
+    remEl.classList.add('over');
+    remEl.classList.remove('rem');
+    document.getElementById('rcpRem').nextElementSibling.textContent = 'сверх';
+  } else {
+    remEl.textContent = rem;
+    remEl.classList.remove('over');
+    remEl.classList.add('rem');
+    document.getElementById('rcpRem').nextElementSibling.textContent = 'осталось';
+  }
+}
+
+function adjustAcceptQty(delta) {
+  const inp = document.getElementById('acceptQtyInput');
+  let v = parseInt(inp.value, 10);
+  if (isNaN(v)) {
+    // Если placeholder — взять его
+    v = parseInt(inp.placeholder, 10);
+    if (isNaN(v)) v = 0;
+  }
+  v += delta;
+  if (v < 0) v = 0;
+  inp.value = v;
+}
+
+async function acceptCurrentItem() {
+  if (currentMode !== 'item' || currentRowIdx == null) return;
+  const r = delivery.rows[currentRowIdx];
+  const inp = document.getElementById('acceptQtyInput');
+  let v = parseInt(inp.value, 10);
+  if (isNaN(v)) {
+    // Если placeholder есть — взять его
+    const ph = parseInt(inp.placeholder, 10);
+    if (!isNaN(ph)) v = ph;
+  }
+  if (isNaN(v) || v <= 0) {
+    inp.classList.add('field-error');
+    showToast('Введите количество принятого', 'error');
+    setTimeout(() => inp.classList.remove('field-error'), 1500);
+    inp.focus();
+    return;
+  }
+  inp.classList.remove('field-error');
+
+  const before = r.accepted || 0;
+  const after = before + v;
+  r.accepted = after;
+
+  await saveState();
+
+  playAccept();
+  if (navigator.vibrate) navigator.vibrate([40, 30, 40]);
+
+  // Показать "успешно принято" + скрыть кнопку приёмки + окошко
+  document.getElementById('rcSuccessBanner').style.display = '';
+  document.getElementById('rcSuccessBanner').querySelector('.rc-val').innerHTML =
+    '✓ Принято <b>+' + v + ' ' + esc(r.unit) + '</b>'
+    + (after > r.qty ? ' <span style="color:var(--orange)">(превышает заявленное на ' + (after - r.qty) + ')</span>' : '');
+  document.getElementById('qtyWrap').style.display = 'none';
+  document.getElementById('acceptBtn').style.display = 'none';
+  document.getElementById('qtyHint').innerHTML = '';
+
+  renderRcProgress();
+  renderMain();
+
+  if (after > r.qty) showToast('Превышение: принято на ' + (after - r.qty) + ' ' + r.unit + ' больше заявленного', 'warn', 3500);
+  else showToast('Принято +' + v + ' ' + r.unit, 'success');
+}
+
+function closeResultCard() {
+  document.getElementById('resultCard').classList.remove('active');
+  paused = false;
+  currentMode = null;
+  currentRowIdx = null;
+  currentLevelInfo = null;
+  lastScannedCode = '';
+  lastScanTime = 0;
+}
+
+function resumeScanner() {
+  // если сканер открыт — закрываем карточку и возобновляем
+  closeResultCard();
+  closeOffCard();
+}
+
+// ===================== Карточка "Товара нет в поставке" =====================
+function openOffCard(code) {
+  paused = true;
+  currentMode = 'off';
+  offState = { scannedEan: code || '', formShown: false, accepted: false };
+
+  document.getElementById('offCode').textContent = code || '';
+  document.getElementById('offEanShown').textContent = code || '—';
+
+  // Сброс формы
+  document.getElementById('offFieldEan').value = code || '';
+  document.getElementById('offFieldArticle').value = '';
+  document.getElementById('offFieldName').value = '';
+  document.getElementById('offFieldPlace').value = '';
+  document.getElementById('offFieldQty').value = '';
+  document.getElementById('offFormError').textContent = '';
+  document.getElementById('offFormSection').style.display = 'none';
+  document.getElementById('offSuccessBanner').style.display = 'none';
+  document.getElementById('offAcceptBtn').style.display = '';
+  document.getElementById('offAcceptBtn').classList.remove('confirm');
+  document.getElementById('offAcceptBtn').textContent = '✓ Принять товар';
+
+  // Список уже принятых (если есть)
+  if (extras.length) {
+    const body = extras.slice().reverse().map(e =>
+      '<div><b>' + esc(e.qty) + ' ' + esc(e.unit || 'шт') + '</b> · '
+      + esc(e.ean || '—') + (e.article ? ' · ' + esc(e.article) : '') + (e.name ? ' · ' + esc(firstWords(e.name, 3)) : '')
+      + (e.place ? ' · место ' + esc(e.place) : '')
+      + ' · <span style="color:var(--text2)">' + new Date(e.time).toLocaleTimeString('ru') + '</span></div>'
+    ).join('');
+    document.getElementById('offMoreBody').innerHTML = body;
+    document.getElementById('offMoreDetails').style.display = '';
+    document.getElementById('offMoreDetails').open = false;
+  } else {
+    document.getElementById('offMoreDetails').style.display = 'none';
+  }
+
+  document.getElementById('offCard').classList.add('active');
+  document.getElementById('offScroll').scrollTop = 0;
+}
+
+function offAcceptClick() {
+  if (!offState.formShown) {
+    // Первый клик — показать форму, поменять цвет кнопки на "подтверждение"
+    offState.formShown = true;
+    document.getElementById('offFormSection').style.display = '';
+    const btn = document.getElementById('offAcceptBtn');
+    btn.classList.add('confirm');
+    btn.textContent = '✓ Принять (подтвердить)';
+    // фокус в количество
+    setTimeout(() => document.getElementById('offFieldQty').focus(), 100);
+    return;
+  }
+  // Второй клик — валидация и приёмка
+  const eanV = document.getElementById('offFieldEan').value.trim();
+  const artV = document.getElementById('offFieldArticle').value.trim();
+  const nameV = document.getElementById('offFieldName').value.trim();
+  const placeV = document.getElementById('offFieldPlace').value.trim();
+  const qtyVraw = document.getElementById('offFieldQty').value.trim();
+  const qtyV = parseInt(qtyVraw, 10);
+
+  let err = '';
+  if (!eanV) err = 'EAN обязателен';
+  else if (isNaN(qtyV) || qtyV <= 0) err = 'Количество должно быть положительным числом';
+
+  document.getElementById('offFormError').textContent = err;
+  document.getElementById('offFieldEan').classList.toggle('field-error', !eanV);
+  document.getElementById('offFieldQty').classList.toggle('field-error', isNaN(qtyV) || qtyV <= 0);
+  if (err) {
+    showToast(err, 'error');
+    return;
+  }
+
+  // Сохраняем как extra
+  const rec = {
+    id: 'x_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
+    time: new Date().toISOString(),
+    ean: eanV,
+    article: artV,
+    name: nameV,
+    place: placeV,
+    qty: qtyV,
+    unit: 'шт',
+    scannedFrom: offState.scannedEan
+  };
+  extras.unshift(rec);
+  saveState();
+
+  playAccept();
+  if (navigator.vibrate) navigator.vibrate([40, 30, 40]);
+
+  offState.accepted = true;
+  document.getElementById('offSuccessBanner').style.display = '';
+  document.getElementById('offSuccessBanner').querySelector('.rc-val').innerHTML =
+    '✓ Принято <b>' + qtyV + ' шт</b> вне поставки';
+  document.getElementById('offFormSection').style.display = 'none';
+  document.getElementById('offAcceptBtn').style.display = 'none';
+
+  renderMain();
+  showToast('Товар принят (вне поставки): ' + qtyV + ' шт', 'success');
+}
+
+function closeOffCard() {
+  document.getElementById('offCard').classList.remove('active');
+  paused = false;
+  currentMode = null;
+  lastScannedCode = '';
+  lastScanTime = 0;
+}
+
+// ===================== Просмотр extras (тап по позиции "вне поставки") =====================
+function openExtraView(id) {
+  const e = extras.find(x => x.id === id);
+  if (!e) return;
+  if (!confirm(
+    'Позиция вне поставки:\n\n' +
+    'EAN: ' + (e.ean || '—') + '\n' +
+    'Артикул: ' + (e.article || '—') + '\n' +
+    'Название: ' + (e.name || '—') + '\n' +
+    'Место: ' + (e.place || '—') + '\n' +
+    'Количество: ' + e.qty + ' ' + (e.unit || 'шт') + '\n' +
+    'Принято: ' + new Date(e.time).toLocaleString('ru') + '\n\n' +
+    'Удалить эту запись?'
+  )) return;
+  extras = extras.filter(x => x.id !== id);
+  saveState();
+  renderMain();
+  showToast('Запись удалена', 'warn');
+}
+
+// ===================== Экспорт результатов =====================
+function exportAcceptance() {
+  if (!delivery) { alert('Файл поставки не загружен'); return; }
+  const wb = XLSX.utils.book_new();
+
+  // Лист 1: Приёмка по поставке (все строки + принято/осталось/превышение)
+  const aoa = [[
+    '№', 'article', 'Товар', 'Кол-во заявлено', 'Принято', 'Осталось', 'Превышение',
+    'Ед.', 'Места', 'МАРКИРОВКА', 'Агрегация', 'Комментарий',
+    'Статус', 'EAN', 'package_level_1_ean', 'package_level_2_ean', 'package_level_3_ean'
+  ]];
+  for (const r of delivery.rows) {
+    const acc = r.accepted || 0;
+    const rem = Math.max(0, r.qty - acc);
+    const overBy = acc > r.qty ? acc - r.qty : 0;
+    const status =
+      overBy > 0 ? 'ПРЕВЫШЕНИЕ' :
+      acc === 0 ? 'не принято' :
+      acc < r.qty ? 'частично' : 'принято';
+    const findEan = (lvl) => (r.eanItems.find(it => it.level === lvl) || {}).ean || '';
+    aoa.push([
+      r.num != null ? r.num : (r.idx+1),
+      r.article,
+      r.name,
+      r.qty,
+      acc,
+      rem,
+      overBy,
+      r.unit,
+      r.places,
+      r.marking === 'yes' ? 'да' : (r.marking === 'no' ? 'нет' : ''),
+      r.aggregation != null ? r.aggregation : '',
+      r.comment,
+      status,
+      findEan('EAN'),
+      findEan('PackageLevel1'),
+      findEan('PackageLevel2'),
+      findEan('PackageLevel3')
+    ]);
+  }
+  const ws1 = XLSX.utils.aoa_to_sheet(aoa);
+  ws1['!cols'] = [
+    {wch:6},{wch:18},{wch:42},{wch:12},{wch:10},{wch:10},{wch:11},
+    {wch:6},{wch:10},{wch:11},{wch:11},{wch:30},
+    {wch:14},{wch:16},{wch:16},{wch:16},{wch:16}
+  ];
+  XLSX.utils.book_append_sheet(wb, ws1, 'Приёмка');
+
+  // Лист 2: Вне поставки
+  const aoa2 = [[
+    '№', 'Время приёмки', 'EAN', 'Артикул', 'Название', 'Место', 'Количество', 'Ед.', 'Отсканированный код'
+  ]];
+  let i = 0;
+  for (const e of [...extras].sort((a,b) => new Date(a.time) - new Date(b.time))) {
+    i++;
+    aoa2.push([
+      i,
+      new Date(e.time).toLocaleString('ru'),
+      e.ean || '',
+      e.article || '',
+      e.name || '',
+      e.place || '',
+      e.qty,
+      e.unit || 'шт',
+      e.scannedFrom || ''
+    ]);
+  }
+  const ws2 = XLSX.utils.aoa_to_sheet(aoa2);
+  ws2['!cols'] = [{wch:5},{wch:20},{wch:16},{wch:18},{wch:36},{wch:10},{wch:10},{wch:6},{wch:18}];
+  XLSX.utils.book_append_sheet(wb, ws2, 'Вне поставки');
+
+  // Лист 3: Сводка
+  const total = delivery.rows.length;
+  let done = 0, partial = 0, over = 0, notTouched = 0;
+  let totalQty = 0, totalAccepted = 0, totalOver = 0;
+  for (const r of delivery.rows) {
+    totalQty += r.qty || 0;
+    totalAccepted += Math.min(r.accepted || 0, r.qty);
+    totalOver += Math.max(0, (r.accepted || 0) - r.qty);
+    const s = rowState(r);
+    if (s === 'done') done++;
+    else if (s === 'partial') partial++;
+    else if (s === 'over') over++;
+    else notTouched++;
+  }
+  let extrasQty = 0;
+  for (const e of extras) extrasQty += e.qty || 0;
+
+  const aoa3 = [
+    ['Поставка (имя файла)', delivery.fileName || ''],
+    ['Лист', delivery.sheetName || ''],
+    ['Загружено', fmtRu(delivery.loadedAt)],
+    ['Экспорт', new Date().toLocaleString('ru')],
+    [],
+    ['Позиций всего', total],
+    ['Принято полностью', done],
+    ['Частично принято', partial],
+    ['С превышением', over],
+    ['Не принято (0)', notTouched],
+    ['Позиций вне поставки', extras.length],
+    [],
+    ['Заявленных единиц всего', totalQty],
+    ['Принято (в пределах заявки)', totalAccepted],
+    ['Превышение (сверх заявки)', totalOver],
+    ['Принято вне поставки (единиц)', extrasQty]
+  ];
+  const ws3 = XLSX.utils.aoa_to_sheet(aoa3);
+  ws3['!cols'] = [{wch:32},{wch:30}];
+  XLSX.utils.book_append_sheet(wb, ws3, 'Сводка');
+
+  const stamp = new Date().toISOString().slice(0,19).replace(/[:T]/g, '-');
+  const baseName = (delivery.fileName || 'Поставка').replace(/\.xlsx?$/i, '');
+  XLSX.writeFile(wb, baseName + '_приёмка_' + stamp + '.xlsx');
+}
+
+// ===================== Init =====================
+document.getElementById('fileInput').addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => loadDeliveryFromBuffer(new Uint8Array(ev.target.result), file.name);
+  reader.readAsArrayBuffer(file);
+  this.value = '';
+});
+
+const uploadArea = document.getElementById('uploadArea');
+uploadArea.addEventListener('dragover', e => { e.preventDefault(); uploadArea.classList.add('dragover'); });
+uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
+uploadArea.addEventListener('drop', e => {
+  e.preventDefault(); uploadArea.classList.remove('dragover');
+  const f = e.dataTransfer.files[0]; if (!f) return;
+  const r = new FileReader();
+  r.onload = ev => loadDeliveryFromBuffer(new Uint8Array(ev.target.result), f.name);
+  r.readAsArrayBuffer(f);
+});
+
+document.addEventListener('touchstart', function f() { initAudio(); document.removeEventListener('touchstart', f); }, { once: true });
+document.addEventListener('click', function f() { initAudio(); document.removeEventListener('click', f); }, { once: true });
+
+(async function init() {
+  try { await openDB(); } catch(e) { console.error('DB open failed:', e); }
+  let restored = false;
+  if (db) {
+    try { restored = await restoreDelivery(); }
+    catch (e) { console.error('Delivery restore failed:', e); }
+  }
+  if (restored) showMain();
+})();
+</script>
+</body>
+</html>
